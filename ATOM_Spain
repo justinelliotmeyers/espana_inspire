@@ -1,0 +1,47 @@
+import json
+from urllib import request, parse
+from pathlib import Path
+
+class ATOM:
+    def __init__(self, types, wd):
+        self.types = types
+        self.wd = Path(wd)
+
+    def download_data(self):
+        url = 'http://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCallejero.svc/json/ObtenerProvincias'
+        content_json = self.get_response(url)
+        provinces = content_json['consulta_provincieroResult']['provinciero']['prov']
+
+        for province in provinces:
+            print(f'Processing province: {province["np"]}')
+            url = f'http://ovc.catastro.meh.es/OVCServWeb/OVCWcfCallejero/COVCCallejeroCodigos.svc/json/ObtenerMunicipiosCodigos?CodigoProvincia={province["cpine"]}'
+            content_json = self.get_response(url)
+            try:
+                municipalities = content_json['consulta_municipieroResult']['municipiero']['muni']
+                for municipality in municipalities:
+                    print(f'  Municipality: {municipality["nm"]}')
+                    code_province = str(municipality['locat']['cd']).zfill(2)
+                    code_municipality = str(municipality['locat']['cmc']).zfill(3)
+                    code = code_province + code_municipality
+                    for type in self.types:
+                        ATOM = f'https://www.catastro.minhap.es/INSPIRE/{type[0]}/{code_province}/ES.SDGC.{type[1]}.atom_{code_province}.xml?type={type[0]}'
+                        reply = request.urlopen(ATOM)
+                        directory = self.wd.joinpath(f'{province["np"]}')
+                        directory.mkdir(parents=True, exist_ok=True)
+                        file = directory.joinpath(f'{type[0]}-{code}-{municipality["nm"]}.gml')
+                        file = open(str(file), 'w')
+                        file.write(str(reply.read(), 'iso-8859-1'))
+                        file.close()
+            except:
+                pass
+
+    def get_response(self, url):
+        reply = request.urlopen(parse.quote(url, safe='://?='))
+        content = reply.read()
+        return json.loads(content)
+
+""" DOWNLOAD ALL THE MUNICIPALITIES FOR SPAIN"""
+types = [['CadastralParcels', 'CP'], ['Addresses', 'AD']]
+wd = input('Please specify download directory:\n>>>')
+atom = ATOM(types, wd)
+atom.download_data()
